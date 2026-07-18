@@ -1,0 +1,5 @@
+**/node_modules
+**/dist
+**/*.db
+**/.env
+server/server.log
