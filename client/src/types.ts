@@ -20,6 +20,7 @@ export interface Reservation {
   email: string;
   quantity: number;
   status: ReservationStatus;
+  rejectionReason: string | null;
   createdAt: string;
   confirmedAt: string | null;
   listing?: Listing;

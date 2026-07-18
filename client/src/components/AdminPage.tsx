@@ -41,11 +41,17 @@ export default function AdminPage() {
   }, []);
 
   const act = async (id: number, action: "confirm" | "reject") => {
+    let reason: string | undefined;
+    if (action === "reject") {
+      const input = window.prompt("Reason for declining (optional, included in the email):");
+      if (input === null) return;
+      reason = input.trim() || undefined;
+    }
     setBusyId(id);
     setError(null);
     try {
       if (action === "confirm") await confirmReservation(token, id);
-      else await rejectReservation(token, id);
+      else await rejectReservation(token, id, reason);
       await load(token);
     } catch (e) {
       setError((e as Error).message);
@@ -373,6 +379,9 @@ function ReservationRow({
       <td>{r.quantity} ticket(s)</td>
       <td>
         <span className={`badge ${r.status.toLowerCase()}`}>{r.status}</span>
+        {r.status === "REJECTED" && r.rejectionReason && (
+          <p className="muted reason">{r.rejectionReason}</p>
+        )}
       </td>
       <td>
         {r.status === "PENDING" && (

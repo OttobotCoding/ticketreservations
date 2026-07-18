@@ -78,16 +78,31 @@ export function notifyUserConfirmed(reservation: Reservation, listing: Listing):
     `<h2>You're all set, ${reservation.name}!</h2>
      <p>Your <strong>${reservation.quantity}</strong> ticket(s) are confirmed:</p>
      <p>${formatGame(listing)}</p>
-     <p>Total due: $${(reservation.quantity * listing.pricePerTicket).toFixed(2)}</p>`
+     <p>Total due: $${(reservation.quantity * listing.pricePerTicket).toFixed(2)}</p>
+     <p>You can venmo <strong>@Teresa-Smigiel</strong> or <strong>@msmigiel</strong> when you are ready.</p>`
   );
 }
 
-export function notifyUserRejected(reservation: Reservation, listing: Listing): Promise<void> {
+export function notifyUserRejected(
+  reservation: Reservation,
+  listing: Listing,
+  reason?: string | null
+): Promise<void> {
+  const reasonHtml = reason ? `<p><strong>Reason:</strong> ${escapeHtml(reason)}</p>` : "";
   return sendEmail(
     reservation.email,
     "Your ticket reservation request was declined",
     `<p>Hi ${reservation.name},</p>
      <p>Unfortunately your request for ${reservation.quantity} ticket(s)
-     (${formatGame(listing)}) could not be fulfilled.</p>`
+     (${formatGame(listing)}) could not be fulfilled.</p>
+     ${reasonHtml}`
   );
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }

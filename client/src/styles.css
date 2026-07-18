@@ -3,8 +3,8 @@
   --card: #1e293b;
   --text: #e2e8f0;
   --muted: #94a3b8;
-  --accent: #fb4f14;
-  --accent-dark: #002244;
+  --accent: #22c55e;
+  --accent-dark: #16a34a;
   --error: #f87171;
   --border: #334155;
 }
@@ -31,11 +31,11 @@ body {
   padding: 0.9rem 1.25rem;
   margin-bottom: 1.5rem;
 }
-.banner-logo { width: 100px; height: 100px; object-fit: contain; }
+.banner-logo { width: 52px; height: 52px; object-fit: contain; }
 .banner h1 {
   flex: 1;
   margin: 0;
-  font-size: 2rem;
+  font-size: 1.45rem;
   color: #fff;
   letter-spacing: 0.02em;
 }
@@ -176,7 +176,6 @@ button.secondary { background: transparent; color: var(--muted); border: 1px sol
   display: flex;
   align-items: center;
   gap: 1rem;
-  margin: 0 2.5rem;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -196,10 +195,10 @@ button.secondary { background: transparent; color: var(--muted); border: 1px sol
   user-select: none;
 }
 
-.row-logo { width: 112px; height: 112px; object-fit: contain; flex-shrink: 0; z-index: 1; }
+.row-logo { width: 56px; height: 56px; object-fit: contain; flex-shrink: 0; z-index: 1; }
 .row-main { flex: 1; min-width: 0; z-index: 1; }
-.row-main h2 { margin: 0 0 0.15rem; font-size: 1.3rem; }
-.row-main p { margin: 0; font-size: 1rem; }
+.row-main h2 { margin: 0 0 0.15rem; font-size: 1.1rem; }
+.row-main p { margin: 0; font-size: 0.9rem; }
 .row-price { text-align: right; z-index: 1; }
 .row-price .price { margin: 0; font-size: 1.3rem; }
 .row-price p { margin: 0; font-size: 0.85rem; }
@@ -215,3 +214,5 @@ button.secondary { background: transparent; color: var(--muted); border: 1px sol
 .row-count .count.available { color: var(--accent); }
 .row .label { margin: 0; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
 .row-price { min-width: 70px; }
+
+.reason { margin: 0.35rem 0 0; font-size: 0.8rem; max-width: 220px; }

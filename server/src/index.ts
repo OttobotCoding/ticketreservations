@@ -258,11 +258,21 @@ admin.post("/reservations/:id/confirm", async (req, res, next) => {
   }
 });
 
-// Reject a pending reservation (no inventory change).
+const rejectSchema = z.object({
+  reason: z.string().trim().max(500, "Reason must be 500 characters or fewer").optional(),
+});
+
+// Reject a pending reservation (no inventory change). Optional reason is stored
+// and included in the decline email.
 admin.post("/reservations/:id/reject", async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid reservation id" });
+    const parsed = rejectSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0].message });
+    }
+    const reason = parsed.data.reason || null;
 
     const [reservation] = await db.select().from(reservations).where(eq(reservations.id, id));
     if (!reservation) return res.status(404).json({ error: "Reservation not found" });
@@ -272,7 +282,7 @@ admin.post("/reservations/:id/reject", async (req, res, next) => {
 
     const [rejected] = await db
       .update(reservations)
-      .set({ status: "REJECTED" })
+      .set({ status: "REJECTED", rejectionReason: reason })
       .where(eq(reservations.id, id))
       .returning();
     const [listing] = await db
@@ -280,7 +290,7 @@ admin.post("/reservations/:id/reject", async (req, res, next) => {
       .from(listings)
       .where(eq(listings.id, reservation.listingId));
 
-    if (listing) await notifyUserRejected(rejected, listing);
+    if (listing) await notifyUserRejected(rejected, listing, reason);
     res.json({ ...rejected, listing });
   } catch (err) {
     next(err);

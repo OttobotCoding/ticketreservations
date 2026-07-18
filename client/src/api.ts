@@ -38,10 +38,15 @@ export function confirmReservation(token: string, id: number): Promise<Reservati
   }).then((r) => handle<Reservation>(r));
 }
 
-export function rejectReservation(token: string, id: number): Promise<Reservation> {
+export function rejectReservation(
+  token: string,
+  id: number,
+  reason?: string
+): Promise<Reservation> {
   return fetch(`/api/admin/reservations/${id}/reject`, {
     method: "POST",
-    headers: { "x-admin-token": token },
+    headers: { "Content-Type": "application/json", "x-admin-token": token },
+    body: JSON.stringify(reason ? { reason } : {}),
   }).then((r) => handle<Reservation>(r));
 }
 

@@ -27,6 +27,7 @@ export const reservations = sqliteTable("reservations", {
   email: text("email").notNull(),
   quantity: integer("quantity").notNull(),
   status: text("status").notNull().default("PENDING"),
+  rejectionReason: text("rejection_reason"),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .$defaultFn(() => new Date()),
@@ -65,7 +66,14 @@ export async function initDb(): Promise<void> {
       email TEXT NOT NULL,
       quantity INTEGER NOT NULL,
       status TEXT NOT NULL DEFAULT 'PENDING',
+      rejection_reason TEXT,
       created_at INTEGER NOT NULL,
       confirmed_at INTEGER
     )`);
+
+  try {
+    await client.execute("ALTER TABLE reservations ADD COLUMN rejection_reason TEXT");
+  } catch {
+    /* column already exists */
+  }
 }
