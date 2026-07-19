@@ -35,7 +35,7 @@ const reservationSchema = z.object({
   listingId: z.number().int().positive(),
   name: z.string().trim().min(1, "Name is required").max(200),
   email: z.string().trim().email("A valid email is required"),
-  quantity: z.number().int().min(1, "Quantity must be at least 1"),
+  quantity: z.number().int().min(2, "Quantity must be at least 2"),
 });
 
 // Request a reservation. Does NOT decrement inventory — that happens on admin confirmation.
