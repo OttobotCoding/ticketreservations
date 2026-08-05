@@ -179,6 +179,7 @@ const listingUpdateSchema = z
     seats: z.string().trim().min(1).max(100),
     pricePerTicket: z.number().min(0),
     ticketsAvailable: z.number().int().min(0),
+    note: z.string().trim().max(300).nullable(),
   })
   .partial();
 

@@ -9,6 +9,7 @@ export interface Listing {
   seats: string;
   pricePerTicket: number;
   ticketsAvailable: number;
+  note: string | null;
 }
 
 export type ReservationStatus = "PENDING" | "CONFIRMED" | "REJECTED";

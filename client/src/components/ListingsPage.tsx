@@ -45,6 +45,7 @@ export default function ListingsPage() {
                     minute: "2-digit",
                   })}
                   {" · "}Sec {l.section} · Row {l.row} · Seats {l.seats}
+                  {l.note && <p className="note">{l.note}</p>}
                 </p>
               </div>
               <div className="row-count">
