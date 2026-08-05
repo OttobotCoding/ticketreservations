@@ -15,6 +15,7 @@ export const listings = sqliteTable("listings", {
   seats: text("seats").notNull(), // e.g. "5-8"
   pricePerTicket: real("price_per_ticket").notNull(),
   ticketsAvailable: integer("tickets_available").notNull(),
+  note: text("note"),
 });
 
 // status: PENDING | CONFIRMED | REJECTED
@@ -55,6 +56,7 @@ export async function initDb(): Promise<void> {
       section TEXT NOT NULL,
       row TEXT NOT NULL,
       seats TEXT NOT NULL,
+      note TEXT,
       price_per_ticket REAL NOT NULL,
       tickets_available INTEGER NOT NULL
     )`);
@@ -73,6 +75,12 @@ export async function initDb(): Promise<void> {
 
   try {
     await client.execute("ALTER TABLE reservations ADD COLUMN rejection_reason TEXT");
+  } catch {
+    /* column already exists */
+  }
+
+  try {
+    await client.execute("ALTER TABLE listings ADD COLUMN note TEXT");
   } catch {
     /* column already exists */
   }

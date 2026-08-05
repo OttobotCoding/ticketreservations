@@ -27,9 +27,9 @@ body {
   background: #0a2343;
   border: 1px solid #163a66;
   border-bottom: 3px solid #fb4f14;
-  border-radius: 12px;
+  border-radius: 12px 12px 0 0;
   padding: 0.9rem 1.25rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 0;
 }
 .banner-logo { width: 100px; height: 100px; object-fit: contain; }
 .banner h1 {
@@ -161,6 +161,7 @@ button.secondary { background: transparent; color: var(--muted); border: 1px sol
 
 .listing-editor td input { width: 90px; padding: 0.35rem; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
 .listing-editor td input.wide { width: 110px; }
+.listing-editor td .note-input { width: 100%; margin-top: 0.4rem; color: var(--text)}
 .admin-toolbar { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
 
 .add-game { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1rem; max-width: 460px; }
@@ -201,6 +202,21 @@ button.secondary { background: transparent; color: var(--muted); border: 1px sol
 .row-main { flex: 1; min-width: 0; z-index: 1; }
 .row-main h2 { margin: 0 0 0.15rem; font-size: 1.3rem; }
 .row-main p { margin: 0; font-size: 0.9rem; }
+.row-main .note {
+  position: absolute;
+  right: 0.9rem;
+  bottom: 0.6rem;
+  z-index: 1;
+  margin: 0;
+  padding: 0.2rem 0.6rem;
+  background: rgba(250, 199, 117, 0.07);
+  border: 1px solid rgba(250, 199, 117, 0.25);
+  border-radius: 6px;
+  color: #e8c88f;
+  font-size: 0.83rem;
+  font-weight: 400;
+}
+
 .row-price { text-align: right; z-index: 1; }
 .row-price .price { margin: 0; font-size: 1.3rem; }
 .row-price p { margin: 0; font-size: 0.85rem; }
@@ -218,3 +234,18 @@ button.secondary { background: transparent; color: var(--muted); border: 1px sol
 .row-price { min-width: 70px; }
 
 .reason { margin: 0.35rem 0 0; font-size: 0.8rem; max-width: 220px; }
+
+.tagline {
+  background: #0a2343;
+  border: 1px solid #163a66;
+  border-top: 3px solid #fb4f14;
+  border-radius: 12px;
+  padding: 0.75rem 1.25rem;
+  margin: 0 0 1.5rem;
+  margin-top: -0.5rem;
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 700;
+  border-radius: 0 0 12px 12px;
+  text-align: center;
+}

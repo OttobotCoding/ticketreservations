@@ -53,7 +53,7 @@ export function rejectReservation(
 export function updateListing(
   token: string,
   id: number,
-  fields: Partial<Pick<Listing, "section" | "row" | "seats" | "pricePerTicket" | "ticketsAvailable">>
+  fields: Partial<Pick<Listing, "section" | "row" | "seats" | "pricePerTicket" | "ticketsAvailable" | "note">>
 ): Promise<Listing> {
   return fetch(`/api/admin/listings/${id}`, {
     method: "PATCH",
