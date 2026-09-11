@@ -179,6 +179,7 @@ const listingUpdateSchema = z
     seats: z.string().trim().min(1).max(100),
     pricePerTicket: z.number().min(0),
     ticketsAvailable: z.number().int().min(0),
+    note: z.string().trim().max(300).nullable(),
   })
   .partial();
 
@@ -251,8 +252,16 @@ admin.post("/reservations/:id/confirm", async (req, res, next) => {
 
     if ("error" in result) return res.status(result.status).json({ error: result.error });
 
-    await notifyUserConfirmed(result.reservation, result.listing);
-    res.json({ ...result.reservation, listing: result.listing });
+    const sent = await notifyUserConfirmed(result.reservation, result.listing);
+    let reservation = result.reservation;
+    if (sent) {
+      [reservation] = await db
+        .update(reservations)
+        .set({ ticketEmailSentAt: new Date() })
+        .where(eq(reservations.id, reservation.id))
+        .returning();
+    }
+    res.json({ ...reservation, listing: result.listing });
   } catch (err) {
     next(err);
   }
@@ -292,6 +301,129 @@ admin.post("/reservations/:id/reject", async (req, res, next) => {
 
     if (listing) await notifyUserRejected(rejected, listing, reason);
     res.json({ ...rejected, listing });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const trackingUpdateSchema = z
+  .object({
+    paymentMethod: z.string().trim().max(50).nullable(),
+    paymentAmount: z.number().min(0).nullable(),
+    paidAt: z.coerce.date().nullable(),
+    adminNotes: z.string().trim().max(2000).nullable(),
+  })
+  .partial();
+
+// Record payment / delivery details on a reservation for the admin tracking page.
+// Separate from confirm/reject so it can be edited any time, for reservations in
+// any status (e.g. logging a late payment on an already-confirmed reservation).
+admin.patch("/reservations/:id/tracking", async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid reservation id" });
+    const parsed = trackingUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0].message });
+    }
+    if (Object.keys(parsed.data).length === 0) {
+      return res.status(400).json({ error: "No fields to update" });
+    }
+
+    const [updated] = await db
+      .update(reservations)
+      .set(parsed.data)
+      .where(eq(reservations.id, id))
+      .returning();
+    if (!updated) return res.status(404).json({ error: "Reservation not found" });
+
+    const [listing] = await db
+      .select()
+      .from(listings)
+      .where(eq(listings.id, updated.listingId));
+    res.json({ ...updated, listing });
+  } catch (err) {
+    next(err);
+  }
+});
+
+function csvCell(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  const s = String(value);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+// Full ticket-tracking export for record-keeping outside the app (spreadsheet, etc.).
+admin.get("/tracking/export", async (_req, res, next) => {
+  try {
+    const rows = await db
+      .select()
+      .from(reservations)
+      .leftJoin(listings, eq(reservations.listingId, listings.id))
+      .orderBy(desc(reservations.createdAt));
+
+    const header = [
+      "Reservation ID",
+      "Buyer Name",
+      "Email",
+      "Game",
+      "Game Date",
+      "Section",
+      "Row",
+      "Seats",
+      "Quantity",
+      "Price/Ticket",
+      "Total Due",
+      "Status",
+      "Rejection Reason",
+      "Requested At",
+      "Confirmed At",
+      "Ticket Email Sent At",
+      "Payment Method",
+      "Payment Amount",
+      "Paid At",
+      "Admin Notes",
+    ];
+
+    const lines = [header.map(csvCell).join(",")];
+    for (const r of rows) {
+      const res_ = r.reservations;
+      const l = r.listings;
+      const total = l ? res_.quantity * l.pricePerTicket : "";
+      lines.push(
+        [
+          res_.id,
+          res_.name,
+          res_.email,
+          l?.opponent ?? "",
+          l ? new Date(l.gameDate).toISOString() : "",
+          l?.section ?? "",
+          l?.row ?? "",
+          l?.seats ?? "",
+          res_.quantity,
+          l?.pricePerTicket ?? "",
+          total,
+          res_.status,
+          res_.rejectionReason ?? "",
+          new Date(res_.createdAt).toISOString(),
+          res_.confirmedAt ? new Date(res_.confirmedAt).toISOString() : "",
+          res_.ticketEmailSentAt ? new Date(res_.ticketEmailSentAt).toISOString() : "",
+          res_.paymentMethod ?? "",
+          res_.paymentAmount ?? "",
+          res_.paidAt ? new Date(res_.paidAt).toISOString() : "",
+          res_.adminNotes ?? "",
+        ]
+          .map(csvCell)
+          .join(",")
+      );
+    }
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="ticket-tracking-${new Date().toISOString().slice(0, 10)}.csv"`
+    );
+    res.send(lines.join("\n"));
   } catch (err) {
     next(err);
   }

@@ -15,6 +15,7 @@ export const listings = sqliteTable("listings", {
   seats: text("seats").notNull(), // e.g. "5-8"
   pricePerTicket: real("price_per_ticket").notNull(),
   ticketsAvailable: integer("tickets_available").notNull(),
+  note: text("note"),
 });
 
 // status: PENDING | CONFIRMED | REJECTED
@@ -32,6 +33,20 @@ export const reservations = sqliteTable("reservations", {
     .notNull()
     .$defaultFn(() => new Date()),
   confirmedAt: integer("confirmed_at", { mode: "timestamp_ms" }),
+
+  // ---- Tracking fields (admin-only "Tracking" page) ----
+  // When the "tickets confirmed" email actually went out (and succeeded), separate
+  // from confirmedAt so a failed/retried send is visible.
+  ticketEmailSentAt: integer("ticket_email_sent_at", { mode: "timestamp_ms" }),
+  // How the buyer paid, e.g. "Venmo", "Zelle", "Cash", "Check".
+  paymentMethod: text("payment_method"),
+  // Amount actually received. Can differ from quantity * pricePerTicket (partial
+  // payment, discount, etc.), which is why it's tracked separately rather than
+  // just derived from the listing price.
+  paymentAmount: real("payment_amount"),
+  paidAt: integer("paid_at", { mode: "timestamp_ms" }),
+  // Free-form admin notes (delivery method, follow-ups, anything else worth recording).
+  adminNotes: text("admin_notes"),
 });
 
 export type Listing = typeof listings.$inferSelect;
@@ -55,6 +70,7 @@ export async function initDb(): Promise<void> {
       section TEXT NOT NULL,
       row TEXT NOT NULL,
       seats TEXT NOT NULL,
+      note TEXT,
       price_per_ticket REAL NOT NULL,
       tickets_available INTEGER NOT NULL
     )`);
@@ -68,12 +84,39 @@ export async function initDb(): Promise<void> {
       status TEXT NOT NULL DEFAULT 'PENDING',
       rejection_reason TEXT,
       created_at INTEGER NOT NULL,
-      confirmed_at INTEGER
+      confirmed_at INTEGER,
+      ticket_email_sent_at INTEGER,
+      payment_method TEXT,
+      payment_amount REAL,
+      paid_at INTEGER,
+      admin_notes TEXT
     )`);
 
   try {
     await client.execute("ALTER TABLE reservations ADD COLUMN rejection_reason TEXT");
   } catch {
     /* column already exists */
+  }
+
+  try {
+    await client.execute("ALTER TABLE listings ADD COLUMN note TEXT");
+  } catch {
+    /* column already exists */
+  }
+
+  // Tracking-page columns (added after initial release) — same
+  // try/ignore-if-exists pattern as the migrations above.
+  for (const stmt of [
+    "ALTER TABLE reservations ADD COLUMN ticket_email_sent_at INTEGER",
+    "ALTER TABLE reservations ADD COLUMN payment_method TEXT",
+    "ALTER TABLE reservations ADD COLUMN payment_amount REAL",
+    "ALTER TABLE reservations ADD COLUMN paid_at INTEGER",
+    "ALTER TABLE reservations ADD COLUMN admin_notes TEXT",
+  ]) {
+    try {
+      await client.execute(stmt);
+    } catch {
+      /* column already exists */
+    }
   }
 }

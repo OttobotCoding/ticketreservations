@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import ListingsPage from "./components/ListingsPage";
 import AdminPage from "./components/AdminPage";
+import TrackingPage from "./components/TrackingPage";
 
 const BRONCOS_LOGO = "https://a.espncdn.com/i/teamlogos/nfl/500/den.png";
 
@@ -13,7 +14,12 @@ export default function App() {
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
-  const isAdmin = route === "#/admin";
+  const isTracking = route === "#/admin/tracking";
+  const isAdmin = route === "#/admin" || isTracking;
+
+  let page = <ListingsPage />;
+  if (isTracking) page = <TrackingPage />;
+  else if (isAdmin) page = <AdminPage />;
 
   return (
     <div className="app">
@@ -22,10 +28,17 @@ export default function App() {
         <h1>Smigiel Broncos Tickets</h1>
         <nav className="banner-tabs">
           <a href="#/" className={!isAdmin ? "active" : ""}>Listings</a>
-          <a href="#/admin" className={isAdmin ? "active" : ""}>Admin</a>
+          <a href="#/admin" className={isAdmin && !isTracking ? "active" : ""}>Admin</a>
+          {isAdmin && (
+            <a href="#/admin/tracking" className={isTracking ? "active" : ""}>Tracking</a>
+          )}
         </nav>
       </header>
-      {isAdmin ? <AdminPage /> : <ListingsPage />}
+      <p className="tagline">
+        "Reserve" game tickets from the Smigiel Family tickets.  <span style={{ color:"red" }}>All prices are face value.</span><br></br>
+        Tickets are not confirmed until you receive the "Approved" email.  Then Terrie or I will reach out for payment.
+      </p>
+      {page}
     </div>
   );
 }

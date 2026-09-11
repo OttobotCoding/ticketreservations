@@ -1,0 +1,745 @@
+diff --git a/client/src/App.tsx b/client/src/App.tsx
+index e82abea..a7687a9 100644
+--- a/client/src/App.tsx
++++ b/client/src/App.tsx
+@@ -1,6 +1,7 @@
+ import { useEffect, useState } from "react";
+ import ListingsPage from "./components/ListingsPage";
+ import AdminPage from "./components/AdminPage";
++import TrackingPage from "./components/TrackingPage";
+ 
+ const BRONCOS_LOGO = "https://a.espncdn.com/i/teamlogos/nfl/500/den.png";
+ 
+@@ -13,7 +14,12 @@ export default function App() {
+     return () => window.removeEventListener("hashchange", onHashChange);
+   }, []);
+ 
+-  const isAdmin = route === "#/admin";
++  const isTracking = route === "#/admin/tracking";
++  const isAdmin = route === "#/admin" || isTracking;
++
++  let page = <ListingsPage />;
++  if (isTracking) page = <TrackingPage />;
++  else if (isAdmin) page = <AdminPage />;
+ 
+   return (
+     <div className="app">
+@@ -22,14 +28,17 @@ export default function App() {
+         <h1>Smigiel Broncos Tickets</h1>
+         <nav className="banner-tabs">
+           <a href="#/" className={!isAdmin ? "active" : ""}>Listings</a>
+-          <a href="#/admin" className={isAdmin ? "active" : ""}>Admin</a>
++          <a href="#/admin" className={isAdmin && !isTracking ? "active" : ""}>Admin</a>
++          {isAdmin && (
++            <a href="#/admin/tracking" className={isTracking ? "active" : ""}>Tracking</a>
++          )}
+         </nav>
+       </header>
+       <p className="tagline">
+         "Reserve" game tickets from the Smigiel Family tickets.  <span style={{ color:"red" }}>All prices are face value.</span><br></br>
+         Tickets are not confirmed until you receive the "Approved" email.  Then Terrie or I will reach out for payment.
+       </p>
+-      {isAdmin ? <AdminPage /> : <ListingsPage />}
++      {page}
+     </div>
+   );
+ }
+\ No newline at end of file
+diff --git a/client/src/api.ts b/client/src/api.ts
+index 89f5d9f..316cf7c 100644
+--- a/client/src/api.ts
++++ b/client/src/api.ts
+@@ -95,3 +95,43 @@ export function deleteListing(token: string, id: number): Promise<{ ok: boolean
+     headers: { "x-admin-token": token },
+   }).then((r) => handle<{ ok: boolean }>(r));
+ }
++
++export function updateTracking(
++  token: string,
++  id: number,
++  fields: Partial<{
++    paymentMethod: string | null;
++    paymentAmount: number | null;
++    paidAt: string | null;
++    adminNotes: string | null;
++  }>
++): Promise<Reservation> {
++  return fetch(`/api/admin/reservations/${id}/tracking`, {
++    method: "PATCH",
++    headers: { "Content-Type": "application/json", "x-admin-token": token },
++    body: JSON.stringify(fields),
++  }).then((r) => handle<Reservation>(r));
++}
++
++// Downloads the CSV export. Uses fetch (not a plain link) because the admin
++// token has to go in a header, not the URL.
++export async function exportTrackingCsv(token: string): Promise<void> {
++  const res = await fetch("/api/admin/tracking/export", {
++    headers: { "x-admin-token": token },
++  });
++  if (!res.ok) {
++    const body = await res.json().catch(() => null);
++    throw new Error(body?.error ?? `Request failed (${res.status})`);
++  }
++  const blob = await res.blob();
++  const url = URL.createObjectURL(blob);
++  const a = document.createElement("a");
++  a.href = url;
++  const disposition = res.headers.get("Content-Disposition") ?? "";
++  const match = /filename="?([^"]+)"?/.exec(disposition);
++  a.download = match?.[1] ?? "ticket-tracking.csv";
++  document.body.appendChild(a);
++  a.click();
++  a.remove();
++  URL.revokeObjectURL(url);
++}
+diff --git a/client/src/components/TrackingPage.tsx b/client/src/components/TrackingPage.tsx
+new file mode 100644
+index 0000000..5e0150d
+--- /dev/null
++++ b/client/src/components/TrackingPage.tsx
+@@ -0,0 +1,317 @@
++import { useCallback, useEffect, useMemo, useState } from "react";
++import { exportTrackingCsv, fetchReservations, updateTracking } from "../api";
++import type { Reservation } from "../types";
++
++const PAYMENT_METHODS = ["Venmo", "Zelle", "PayPal", "Cash", "Check", "Other"];
++
++function fmtDateTime(iso: string | null): string {
++  if (!iso) return "—";
++  return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
++}
++
++export default function TrackingPage() {
++  const [token, setToken] = useState(() => localStorage.getItem("adminToken") ?? "");
++  const [authed, setAuthed] = useState(false);
++  const [reservations, setReservations] = useState<Reservation[]>([]);
++  const [error, setError] = useState<string | null>(null);
++  const [notice, setNotice] = useState<string | null>(null);
++  const [search, setSearch] = useState("");
++  const [statusFilter, setStatusFilter] = useState<"ALL" | "PENDING" | "CONFIRMED" | "REJECTED">(
++    "ALL"
++  );
++  const [paidFilter, setPaidFilter] = useState<"ALL" | "PAID" | "UNPAID">("ALL");
++  const [exporting, setExporting] = useState(false);
++
++  const load = useCallback(async (t: string) => {
++    setError(null);
++    try {
++      const data = await fetchReservations(t);
++      setReservations(data);
++      setAuthed(true);
++      localStorage.setItem("adminToken", t);
++    } catch (e) {
++      setAuthed(false);
++      setError((e as Error).message);
++    }
++  }, []);
++
++  useEffect(() => {
++    if (token) void load(token);
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, []);
++
++  const doExport = async () => {
++    setExporting(true);
++    setError(null);
++    try {
++      await exportTrackingCsv(token);
++    } catch (e) {
++      setError((e as Error).message);
++    } finally {
++      setExporting(false);
++    }
++  };
++
++  const filtered = useMemo(() => {
++    const q = search.trim().toLowerCase();
++    return reservations.filter((r) => {
++      if (statusFilter !== "ALL" && r.status !== statusFilter) return false;
++      if (paidFilter === "PAID" && r.paidAt === null) return false;
++      if (paidFilter === "UNPAID" && r.paidAt !== null) return false;
++      if (!q) return true;
++      const haystack = `${r.name} ${r.email} ${r.listing?.opponent ?? ""}`.toLowerCase();
++      return haystack.includes(q);
++    });
++  }, [reservations, search, statusFilter, paidFilter]);
++
++  if (!authed) {
++    return (
++      <form
++        className="admin-login"
++        onSubmit={(e) => {
++          e.preventDefault();
++          void load(token);
++        }}
++      >
++        <h2>Tracking</h2>
++        <p className="muted">Admin-only detailed ticket &amp; payment records.</p>
++        <label>
++          Admin token
++          <input
++            type="password"
++            value={token}
++            onChange={(e) => setToken(e.target.value)}
++            placeholder="ADMIN_TOKEN from server/.env"
++            required
++          />
++        </label>
++        {error && <p className="error">{error}</p>}
++        <button type="submit">Sign in</button>
++      </form>
++    );
++  }
++
++  const totalCollected = reservations.reduce((sum, r) => sum + (r.paymentAmount ?? 0), 0);
++
++  return (
++    <div>
++      {error && <p className="error">{error}</p>}
++      {notice && <p className="available">{notice}</p>}
++
++      <div className="admin-toolbar">
++        <h2>Ticket Tracking ({filtered.length})</h2>
++        <button disabled={exporting} onClick={() => void doExport()}>
++          {exporting ? "Exporting…" : "Export CSV"}
++        </button>
++      </div>
++      <p className="muted">
++        Total recorded payments: <strong>${totalCollected.toFixed(2)}</strong>
++      </p>
++
++      <div className="tracking-filters">
++        <input
++          className="tracking-search"
++          value={search}
++          onChange={(e) => setSearch(e.target.value)}
++          placeholder="Search name, email, or opponent…"
++        />
++        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}>
++          <option value="ALL">All statuses</option>
++          <option value="PENDING">Pending</option>
++          <option value="CONFIRMED">Confirmed</option>
++          <option value="REJECTED">Rejected</option>
++        </select>
++        <select value={paidFilter} onChange={(e) => setPaidFilter(e.target.value as typeof paidFilter)}>
++          <option value="ALL">Paid + unpaid</option>
++          <option value="PAID">Paid only</option>
++          <option value="UNPAID">Unpaid only</option>
++        </select>
++      </div>
++
++      <table className="admin-table tracking-table">
++        <thead>
++          <tr>
++            <th>Buyer</th>
++            <th>Game</th>
++            <th>Qty / Total</th>
++            <th>Status</th>
++            <th>Requested / Confirmed</th>
++            <th>Ticket Email</th>
++            <th>Payment</th>
++            <th>Notes</th>
++          </tr>
++        </thead>
++        <tbody>
++          {filtered.map((r) => (
++            <TrackingRow
++              key={r.id}
++              r={r}
++              token={token}
++              onSaved={() => void load(token)}
++              onError={setError}
++            />
++          ))}
++          {filtered.length === 0 && (
++            <tr>
++              <td colSpan={8} className="muted">
++                No reservations match these filters.
++              </td>
++            </tr>
++          )}
++        </tbody>
++      </table>
++    </div>
++  );
++}
++
++function TrackingRow({
++  r,
++  token,
++  onSaved,
++  onError,
++}: {
++  r: Reservation;
++  token: string;
++  onSaved: () => void;
++  onError: (msg: string) => void;
++}) {
++  const [paymentMethod, setPaymentMethod] = useState(r.paymentMethod ?? "");
++  const [paymentAmount, setPaymentAmount] = useState(
++    r.paymentAmount !== null ? String(r.paymentAmount) : ""
++  );
++  const [paidAt, setPaidAt] = useState(() => (r.paidAt ? toLocalInputValue(r.paidAt) : ""));
++  const [adminNotes, setAdminNotes] = useState(r.adminNotes ?? "");
++  const [saving, setSaving] = useState(false);
++
++  const dirty =
++    paymentMethod !== (r.paymentMethod ?? "") ||
++    paymentAmount !== (r.paymentAmount !== null ? String(r.paymentAmount) : "") ||
++    paidAt !== (r.paidAt ? toLocalInputValue(r.paidAt) : "") ||
++    adminNotes !== (r.adminNotes ?? "");
++
++  const total = r.listing ? (r.quantity * r.listing.pricePerTicket).toFixed(2) : null;
++
++  const save = async () => {
++    setSaving(true);
++    try {
++      await updateTracking(token, r.id, {
++        paymentMethod: paymentMethod.trim() || null,
++        paymentAmount: paymentAmount.trim() === "" ? null : Number(paymentAmount),
++        paidAt: paidAt ? new Date(paidAt).toISOString() : null,
++        adminNotes: adminNotes.trim() || null,
++      });
++      onSaved();
++    } catch (e) {
++      onError((e as Error).message);
++    } finally {
++      setSaving(false);
++    }
++  };
++
++  const markPaidNow = () => {
++    setPaidAt(toLocalInputValue(new Date().toISOString()));
++    if (!paymentAmount && total) setPaymentAmount(total);
++  };
++
++  return (
++    <tr>
++      <td>
++        <strong>{r.name}</strong>
++        <br />
++        <span className="muted">{r.email}</span>
++      </td>
++      <td>
++        {r.listing ? (
++          <>
++            {r.listing.opponent}
++            <br />
++            <span className="muted">
++              Sec {r.listing.section} · Row {r.listing.row} · Seats {r.listing.seats}
++            </span>
++          </>
++        ) : (
++          `Listing #${r.listingId}`
++        )}
++      </td>
++      <td>
++        {r.quantity} ticket(s)
++        {total && (
++          <>
++            <br />
++            <span className="muted">${total}</span>
++          </>
++        )}
++      </td>
++      <td>
++        <span className={`badge ${r.status.toLowerCase()}`}>{r.status}</span>
++      </td>
++      <td>
++        <span className="muted">Req: {fmtDateTime(r.createdAt)}</span>
++        <br />
++        <span className="muted">Conf: {fmtDateTime(r.confirmedAt)}</span>
++      </td>
++      <td>
++        {r.ticketEmailSentAt ? (
++          <>
++            <span className="badge confirmed">SENT</span>
++            <br />
++            <span className="muted">{fmtDateTime(r.ticketEmailSentAt)}</span>
++            <br />
++            <span className="muted">to {r.email}</span>
++          </>
++        ) : (
++          <span className="badge pending">NOT SENT</span>
++        )}
++      </td>
++      <td className="tracking-payment-cell">
++        <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
++          <option value="">Method…</option>
++          {PAYMENT_METHODS.map((m) => (
++            <option key={m} value={m}>
++              {m}
++            </option>
++          ))}
++        </select>
++        <input
++          type="number"
++          min="0"
++          step="0.01"
++          className="wide"
++          placeholder="Amount"
++          value={paymentAmount}
++          onChange={(e) => setPaymentAmount(e.target.value)}
++        />
++        <input
++          type="datetime-local"
++          value={paidAt}
++          onChange={(e) => setPaidAt(e.target.value)}
++        />
++        {!paidAt && (
++          <button type="button" className="secondary" onClick={markPaidNow}>
++            Mark paid now
++          </button>
++        )}
++      </td>
++      <td className="tracking-notes-cell">
++        <textarea
++          value={adminNotes}
++          onChange={(e) => setAdminNotes(e.target.value)}
++          placeholder="Notes (delivery, follow-ups, etc.)"
++          rows={2}
++        />
++        <button disabled={!dirty || saving} onClick={() => void save()}>
++          {saving ? "…" : "Save"}
++        </button>
++      </td>
++    </tr>
++  );
++}
++
++// datetime-local inputs need "YYYY-MM-DDTHH:mm" in local time, not an ISO string.
++function toLocalInputValue(iso: string): string {
++  const d = new Date(iso);
++  const pad = (n: number) => String(n).padStart(2, "0");
++  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
++    d.getHours()
++  )}:${pad(d.getMinutes())}`;
++}
+diff --git a/client/src/styles.css b/client/src/styles.css
+index afa9b54..44d3523 100644
+--- a/client/src/styles.css
++++ b/client/src/styles.css
+@@ -235,6 +235,24 @@ button.secondary { background: transparent; color: var(--muted); border: 1px sol
+ 
+ .reason { margin: 0.35rem 0 0; font-size: 0.8rem; max-width: 220px; }
+ 
++.tracking-filters { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
++.tracking-search { flex: 1; min-width: 200px; padding: 0.55rem; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--text); }
++.tracking-filters select { padding: 0.55rem; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--text); }
++
++.tracking-table { font-size: 0.9rem; }
++.tracking-payment-cell, .tracking-notes-cell { display: flex; flex-direction: column; gap: 0.35rem; min-width: 160px; }
++.tracking-payment-cell select,
++.tracking-payment-cell input,
++.tracking-notes-cell textarea {
++  padding: 0.4rem;
++  border-radius: 6px;
++  border: 1px solid var(--border);
++  background: var(--bg);
++  color: var(--text);
++  font-size: 0.85rem;
++}
++.tracking-notes-cell textarea { resize: vertical; min-width: 160px; }
++
+ .tagline {
+   background: #0a2343;
+   border: 1px solid #163a66;
+diff --git a/client/src/types.ts b/client/src/types.ts
+index f875e98..6ed9f04 100644
+--- a/client/src/types.ts
++++ b/client/src/types.ts
+@@ -24,5 +24,10 @@ export interface Reservation {
+   rejectionReason: string | null;
+   createdAt: string;
+   confirmedAt: string | null;
++  ticketEmailSentAt: string | null;
++  paymentMethod: string | null;
++  paymentAmount: number | null;
++  paidAt: string | null;
++  adminNotes: string | null;
+   listing?: Listing;
+ }
+diff --git a/server/src/db.ts b/server/src/db.ts
+index 11d119d..b3953fe 100644
+--- a/server/src/db.ts
++++ b/server/src/db.ts
+@@ -33,6 +33,20 @@ export const reservations = sqliteTable("reservations", {
+     .notNull()
+     .$defaultFn(() => new Date()),
+   confirmedAt: integer("confirmed_at", { mode: "timestamp_ms" }),
++
++  // ---- Tracking fields (admin-only "Tracking" page) ----
++  // When the "tickets confirmed" email actually went out (and succeeded), separate
++  // from confirmedAt so a failed/retried send is visible.
++  ticketEmailSentAt: integer("ticket_email_sent_at", { mode: "timestamp_ms" }),
++  // How the buyer paid, e.g. "Venmo", "Zelle", "Cash", "Check".
++  paymentMethod: text("payment_method"),
++  // Amount actually received. Can differ from quantity * pricePerTicket (partial
++  // payment, discount, etc.), which is why it's tracked separately rather than
++  // just derived from the listing price.
++  paymentAmount: real("payment_amount"),
++  paidAt: integer("paid_at", { mode: "timestamp_ms" }),
++  // Free-form admin notes (delivery method, follow-ups, anything else worth recording).
++  adminNotes: text("admin_notes"),
+ });
+ 
+ export type Listing = typeof listings.$inferSelect;
+@@ -70,7 +84,12 @@ export async function initDb(): Promise<void> {
+       status TEXT NOT NULL DEFAULT 'PENDING',
+       rejection_reason TEXT,
+       created_at INTEGER NOT NULL,
+-      confirmed_at INTEGER
++      confirmed_at INTEGER,
++      ticket_email_sent_at INTEGER,
++      payment_method TEXT,
++      payment_amount REAL,
++      paid_at INTEGER,
++      admin_notes TEXT
+     )`);
+ 
+   try {
+@@ -84,4 +103,20 @@ export async function initDb(): Promise<void> {
+   } catch {
+     /* column already exists */
+   }
++
++  // Tracking-page columns (added after initial release) — same
++  // try/ignore-if-exists pattern as the migrations above.
++  for (const stmt of [
++    "ALTER TABLE reservations ADD COLUMN ticket_email_sent_at INTEGER",
++    "ALTER TABLE reservations ADD COLUMN payment_method TEXT",
++    "ALTER TABLE reservations ADD COLUMN payment_amount REAL",
++    "ALTER TABLE reservations ADD COLUMN paid_at INTEGER",
++    "ALTER TABLE reservations ADD COLUMN admin_notes TEXT",
++  ]) {
++    try {
++      await client.execute(stmt);
++    } catch {
++      /* column already exists */
++    }
++  }
+ }
+diff --git a/server/src/email.ts b/server/src/email.ts
+index b797af7..672c706 100644
+--- a/server/src/email.ts
++++ b/server/src/email.ts
+@@ -14,10 +14,10 @@ const transporter = smtpConfigured
+     })
+   : null;
+ 
+-async function sendEmail(to: string, subject: string, html: string): Promise<void> {
++async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
+   if (!transporter) {
+     console.log(`[email:dev] To: ${to} | Subject: ${subject}\n${html}\n`);
+-    return;
++    return true;
+   }
+   try {
+     await transporter.sendMail({
+@@ -26,9 +26,11 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
+       subject,
+       html,
+     });
++    return true;
+   } catch (err) {
+     // Email failures must not break the reservation flow; log and continue.
+     console.error(`Failed to send email to ${to}:`, err);
++    return false;
+   }
+ }
+ 
+@@ -40,11 +42,11 @@ function formatGame(listing: Listing): string {
+   return `${listing.opponent} on ${date} — Section ${listing.section}, Row ${listing.row}, Seats ${listing.seats}`;
+ }
+ 
+-export function notifyAdminOfRequest(reservation: Reservation, listing: Listing): Promise<void> {
++export function notifyAdminOfRequest(reservation: Reservation, listing: Listing): Promise<boolean> {
+   const adminEmail = process.env.ADMIN_EMAIL;
+   if (!adminEmail) {
+     console.warn("ADMIN_EMAIL not set; skipping admin notification.");
+-    return Promise.resolve();
++    return Promise.resolve(false);
+   }
+   return sendEmail(
+     adminEmail,
+@@ -59,7 +61,7 @@ export function notifyAdminOfRequest(reservation: Reservation, listing: Listing)
+   );
+ }
+ 
+-export function notifyUserRequestPending(reservation: Reservation, listing: Listing): Promise<void> {
++export function notifyUserRequestPending(reservation: Reservation, listing: Listing): Promise<boolean> {
+   return sendEmail(
+     reservation.email,
+     "Your ticket reservation request is pending",
+@@ -71,7 +73,7 @@ export function notifyUserRequestPending(reservation: Reservation, listing: List
+   );
+ }
+ 
+-export function notifyUserConfirmed(reservation: Reservation, listing: Listing): Promise<void> {
++export function notifyUserConfirmed(reservation: Reservation, listing: Listing): Promise<boolean> {
+   return sendEmail(
+     reservation.email,
+     "Your tickets are confirmed!",
+@@ -87,7 +89,7 @@ export function notifyUserRejected(
+   reservation: Reservation,
+   listing: Listing,
+   reason?: string | null
+-): Promise<void> {
++): Promise<boolean> {
+   const reasonHtml = reason ? `<p><strong>Reason:</strong> ${escapeHtml(reason)}</p>` : "";
+   return sendEmail(
+     reservation.email,
+diff --git a/server/src/index.ts b/server/src/index.ts
+index d7f7f10..47ee35f 100644
+--- a/server/src/index.ts
++++ b/server/src/index.ts
+@@ -252,8 +252,16 @@ admin.post("/reservations/:id/confirm", async (req, res, next) => {
+ 
+     if ("error" in result) return res.status(result.status).json({ error: result.error });
+ 
+-    await notifyUserConfirmed(result.reservation, result.listing);
+-    res.json({ ...result.reservation, listing: result.listing });
++    const sent = await notifyUserConfirmed(result.reservation, result.listing);
++    let reservation = result.reservation;
++    if (sent) {
++      [reservation] = await db
++        .update(reservations)
++        .set({ ticketEmailSentAt: new Date() })
++        .where(eq(reservations.id, reservation.id))
++        .returning();
++    }
++    res.json({ ...reservation, listing: result.listing });
+   } catch (err) {
+     next(err);
+   }
+@@ -298,6 +306,129 @@ admin.post("/reservations/:id/reject", async (req, res, next) => {
+   }
+ });
+ 
++const trackingUpdateSchema = z
++  .object({
++    paymentMethod: z.string().trim().max(50).nullable(),
++    paymentAmount: z.number().min(0).nullable(),
++    paidAt: z.coerce.date().nullable(),
++    adminNotes: z.string().trim().max(2000).nullable(),
++  })
++  .partial();
++
++// Record payment / delivery details on a reservation for the admin tracking page.
++// Separate from confirm/reject so it can be edited any time, for reservations in
++// any status (e.g. logging a late payment on an already-confirmed reservation).
++admin.patch("/reservations/:id/tracking", async (req, res, next) => {
++  try {
++    const id = Number(req.params.id);
++    if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid reservation id" });
++    const parsed = trackingUpdateSchema.safeParse(req.body);
++    if (!parsed.success) {
++      return res.status(400).json({ error: parsed.error.issues[0].message });
++    }
++    if (Object.keys(parsed.data).length === 0) {
++      return res.status(400).json({ error: "No fields to update" });
++    }
++
++    const [updated] = await db
++      .update(reservations)
++      .set(parsed.data)
++      .where(eq(reservations.id, id))
++      .returning();
++    if (!updated) return res.status(404).json({ error: "Reservation not found" });
++
++    const [listing] = await db
++      .select()
++      .from(listings)
++      .where(eq(listings.id, updated.listingId));
++    res.json({ ...updated, listing });
++  } catch (err) {
++    next(err);
++  }
++});
++
++function csvCell(value: unknown): string {
++  if (value === null || value === undefined) return "";
++  const s = String(value);
++  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
++}
++
++// Full ticket-tracking export for record-keeping outside the app (spreadsheet, etc.).
++admin.get("/tracking/export", async (_req, res, next) => {
++  try {
++    const rows = await db
++      .select()
++      .from(reservations)
++      .leftJoin(listings, eq(reservations.listingId, listings.id))
++      .orderBy(desc(reservations.createdAt));
++
++    const header = [
++      "Reservation ID",
++      "Buyer Name",
++      "Email",
++      "Game",
++      "Game Date",
++      "Section",
++      "Row",
++      "Seats",
++      "Quantity",
++      "Price/Ticket",
++      "Total Due",
++      "Status",
++      "Rejection Reason",
++      "Requested At",
++      "Confirmed At",
++      "Ticket Email Sent At",
++      "Payment Method",
++      "Payment Amount",
++      "Paid At",
++      "Admin Notes",
++    ];
++
++    const lines = [header.map(csvCell).join(",")];
++    for (const r of rows) {
++      const res_ = r.reservations;
++      const l = r.listings;
++      const total = l ? res_.quantity * l.pricePerTicket : "";
++      lines.push(
++        [
++          res_.id,
++          res_.name,
++          res_.email,
++          l?.opponent ?? "",
++          l ? new Date(l.gameDate).toISOString() : "",
++          l?.section ?? "",
++          l?.row ?? "",
++          l?.seats ?? "",
++          res_.quantity,
++          l?.pricePerTicket ?? "",
++          total,
++          res_.status,
++          res_.rejectionReason ?? "",
++          new Date(res_.createdAt).toISOString(),
++          res_.confirmedAt ? new Date(res_.confirmedAt).toISOString() : "",
++          res_.ticketEmailSentAt ? new Date(res_.ticketEmailSentAt).toISOString() : "",
++          res_.paymentMethod ?? "",
++          res_.paymentAmount ?? "",
++          res_.paidAt ? new Date(res_.paidAt).toISOString() : "",
++          res_.adminNotes ?? "",
++        ]
++          .map(csvCell)
++          .join(",")
++      );
++    }
++
++    res.setHeader("Content-Type", "text/csv; charset=utf-8");
++    res.setHeader(
++      "Content-Disposition",
++      `attachment; filename="ticket-tracking-${new Date().toISOString().slice(0, 10)}.csv"`
++    );
++    res.send(lines.join("\n"));
++  } catch (err) {
++    next(err);
++  }
++});
++
+ app.use("/api/admin", admin);
+ 
+ // ---------- Static frontend (production) ----------

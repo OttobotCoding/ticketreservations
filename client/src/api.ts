@@ -53,7 +53,7 @@ export function rejectReservation(
 export function updateListing(
   token: string,
   id: number,
-  fields: Partial<Pick<Listing, "section" | "row" | "seats" | "pricePerTicket" | "ticketsAvailable">>
+  fields: Partial<Pick<Listing, "section" | "row" | "seats" | "pricePerTicket" | "ticketsAvailable" | "note">>
 ): Promise<Listing> {
   return fetch(`/api/admin/listings/${id}`, {
     method: "PATCH",
@@ -94,4 +94,44 @@ export function deleteListing(token: string, id: number): Promise<{ ok: boolean 
     method: "DELETE",
     headers: { "x-admin-token": token },
   }).then((r) => handle<{ ok: boolean }>(r));
+}
+
+export function updateTracking(
+  token: string,
+  id: number,
+  fields: Partial<{
+    paymentMethod: string | null;
+    paymentAmount: number | null;
+    paidAt: string | null;
+    adminNotes: string | null;
+  }>
+): Promise<Reservation> {
+  return fetch(`/api/admin/reservations/${id}/tracking`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", "x-admin-token": token },
+    body: JSON.stringify(fields),
+  }).then((r) => handle<Reservation>(r));
+}
+
+// Downloads the CSV export. Uses fetch (not a plain link) because the admin
+// token has to go in a header, not the URL.
+export async function exportTrackingCsv(token: string): Promise<void> {
+  const res = await fetch("/api/admin/tracking/export", {
+    headers: { "x-admin-token": token },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error ?? `Request failed (${res.status})`);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = /filename="?([^"]+)"?/.exec(disposition);
+  a.download = match?.[1] ?? "ticket-tracking.csv";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }

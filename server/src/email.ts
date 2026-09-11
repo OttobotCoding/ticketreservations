@@ -14,10 +14,10 @@ const transporter = smtpConfigured
     })
   : null;
 
-async function sendEmail(to: string, subject: string, html: string): Promise<void> {
+async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
   if (!transporter) {
     console.log(`[email:dev] To: ${to} | Subject: ${subject}\n${html}\n`);
-    return;
+    return true;
   }
   try {
     await transporter.sendMail({
@@ -26,9 +26,11 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
       subject,
       html,
     });
+    return true;
   } catch (err) {
     // Email failures must not break the reservation flow; log and continue.
     console.error(`Failed to send email to ${to}:`, err);
+    return false;
   }
 }
 
@@ -40,11 +42,11 @@ function formatGame(listing: Listing): string {
   return `${listing.opponent} on ${date} — Section ${listing.section}, Row ${listing.row}, Seats ${listing.seats}`;
 }
 
-export function notifyAdminOfRequest(reservation: Reservation, listing: Listing): Promise<void> {
+export function notifyAdminOfRequest(reservation: Reservation, listing: Listing): Promise<boolean> {
   const adminEmail = process.env.ADMIN_EMAIL;
   if (!adminEmail) {
     console.warn("ADMIN_EMAIL not set; skipping admin notification.");
-    return Promise.resolve();
+    return Promise.resolve(false);
   }
   return sendEmail(
     adminEmail,
@@ -59,7 +61,7 @@ export function notifyAdminOfRequest(reservation: Reservation, listing: Listing)
   );
 }
 
-export function notifyUserRequestPending(reservation: Reservation, listing: Listing): Promise<void> {
+export function notifyUserRequestPending(reservation: Reservation, listing: Listing): Promise<boolean> {
   return sendEmail(
     reservation.email,
     "Your ticket reservation request is pending",
@@ -71,7 +73,7 @@ export function notifyUserRequestPending(reservation: Reservation, listing: List
   );
 }
 
-export function notifyUserConfirmed(reservation: Reservation, listing: Listing): Promise<void> {
+export function notifyUserConfirmed(reservation: Reservation, listing: Listing): Promise<boolean> {
   return sendEmail(
     reservation.email,
     "Your tickets are confirmed!",
@@ -87,7 +89,7 @@ export function notifyUserRejected(
   reservation: Reservation,
   listing: Listing,
   reason?: string | null
-): Promise<void> {
+): Promise<boolean> {
   const reasonHtml = reason ? `<p><strong>Reason:</strong> ${escapeHtml(reason)}</p>` : "";
   return sendEmail(
     reservation.email,
