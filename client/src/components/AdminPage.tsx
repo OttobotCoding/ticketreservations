@@ -3,11 +3,13 @@ import {
   confirmReservation,
   createListing,
   deleteListing,
+  deleteReservation,
   fetchListings,
   fetchReservations,
   rejectReservation,
   syncSchedule,
   updateListing,
+  updateReservation,
 } from "../api";
 import type { Listing, Reservation } from "../types";
 
@@ -146,7 +148,16 @@ export default function AdminPage() {
       <table className="admin-table">
         <tbody>
           {pending.map((r) => (
-            <ReservationRow key={r.id} r={r} busy={busyId === r.id} onAct={act} />
+            <ReservationRow
+              key={r.id}
+              r={r}
+              busy={busyId === r.id}
+              onAct={act}
+              listings={listings}
+              token={token}
+              onChanged={() => void load(token)}
+              onError={setError}
+            />
           ))}
         </tbody>
       </table>
@@ -157,7 +168,16 @@ export default function AdminPage() {
           <table className="admin-table">
             <tbody>
               {resolved.map((r) => (
-                <ReservationRow key={r.id} r={r} busy={false} onAct={act} />
+                <ReservationRow
+                  key={r.id}
+                  r={r}
+                  busy={false}
+                  onAct={act}
+                  listings={listings}
+                  token={token}
+                  onChanged={() => void load(token)}
+                  onError={setError}
+                />
               ))}
             </tbody>
           </table>
@@ -360,11 +380,128 @@ function ReservationRow({
   r,
   busy,
   onAct,
+  listings,
+  token,
+  onChanged,
+  onError,
 }: {
   r: Reservation;
   busy: boolean;
   onAct: (id: number, action: "confirm" | "reject") => void;
+  listings: Listing[];
+  token: string;
+  onChanged: () => void;
+  onError: (msg: string) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(r.name);
+  const [email, setEmail] = useState(r.email);
+  const [quantity, setQuantity] = useState(String(r.quantity));
+  const [listingId, setListingId] = useState(String(r.listingId));
+  const [saving, setSaving] = useState(false);
+
+  const startEdit = () => {
+    setName(r.name);
+    setEmail(r.email);
+    setQuantity(String(r.quantity));
+    setListingId(String(r.listingId));
+    setEditing(true);
+  };
+
+  const saveEdit = async () => {
+    setSaving(true);
+    try {
+      await updateReservation(token, r.id, {
+        name: name.trim(),
+        email: email.trim(),
+        quantity: Number(quantity),
+        listingId: Number(listingId),
+      });
+      setEditing(false);
+      onChanged();
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async () => {
+    const inventoryNote =
+      r.status === "CONFIRMED"
+        ? ` The ${r.quantity} ticket(s) will be returned to available inventory.`
+        : "";
+    if (!window.confirm(`Delete this reservation for ${r.name}? This cannot be undone.${inventoryNote}`)) {
+      return;
+    }
+    setSaving(true);
+    try {
+      await deleteReservation(token, r.id);
+      onChanged();
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <tr>
+        <td colSpan={5}>
+          <div className="reservation-edit-form">
+            <label>
+              Name
+              <input value={name} onChange={(e) => setName(e.target.value)} />
+            </label>
+            <label>
+              Email
+              <input value={email} onChange={(e) => setEmail(e.target.value)} />
+            </label>
+            <label>
+              Game
+              <select value={listingId} onChange={(e) => setListingId(e.target.value)}>
+                {listings.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.opponent} ({new Date(l.gameDate).toLocaleDateString()})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Quantity
+              <input
+                type="number"
+                min="1"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+              />
+            </label>
+            {r.status === "CONFIRMED" && (
+              <p className="muted">
+                This reservation is already confirmed — changing the game or quantity will
+                automatically move the ticket inventory to match.
+              </p>
+            )}
+            <div className="row-actions">
+              <button disabled={saving} onClick={() => void saveEdit()}>
+                {saving ? "Saving…" : "Save"}
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                disabled={saving}
+                onClick={() => setEditing(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
   return (
     <tr>
       <td>
@@ -403,6 +540,14 @@ function ReservationRow({
             </button>
           </div>
         )}
+        <div className="row-actions">
+          <button type="button" className="secondary" disabled={saving} onClick={startEdit}>
+            Edit
+          </button>
+          <button type="button" className="secondary" disabled={saving} onClick={() => void remove()}>
+            Delete
+          </button>
+        </div>
       </td>
     </tr>
   );

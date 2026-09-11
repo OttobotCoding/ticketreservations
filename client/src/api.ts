@@ -50,6 +50,32 @@ export function rejectReservation(
   }).then((r) => handle<Reservation>(r));
 }
 
+// Edit a reservation's name/email/quantity/game. Inventory is adjusted
+// server-side automatically if the reservation is already CONFIRMED.
+export function updateReservation(
+  token: string,
+  id: number,
+  fields: Partial<Pick<Reservation, "name" | "email" | "quantity" | "listingId">>
+): Promise<Reservation> {
+  return fetch(`/api/admin/reservations/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", "x-admin-token": token },
+    body: JSON.stringify(fields),
+  }).then((r) => handle<Reservation>(r));
+}
+
+// Delete a reservation outright. If it was CONFIRMED, the server returns its
+// tickets to the listing's available count automatically.
+export function deleteReservation(
+  token: string,
+  id: number
+): Promise<{ ok: boolean; restored: number }> {
+  return fetch(`/api/admin/reservations/${id}`, {
+    method: "DELETE",
+    headers: { "x-admin-token": token },
+  }).then((r) => handle<{ ok: boolean; restored: number }>(r));
+}
+
 export function updateListing(
   token: string,
   id: number,

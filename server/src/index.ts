@@ -347,6 +347,130 @@ admin.patch("/reservations/:id/tracking", async (req, res, next) => {
   }
 });
 
+const reservationEditSchema = z
+  .object({
+    listingId: z.number().int().positive(),
+    name: z.string().trim().min(1, "Name is required").max(200),
+    email: z.string().trim().email("A valid email is required"),
+    quantity: z.number().int().min(1, "Quantity must be at least 1"),
+  })
+  .partial();
+
+class InsufficientInventoryError extends Error {}
+
+// Edit a reservation's name/email/quantity/game. If the reservation is
+// CONFIRMED, inventory is correctly moved: the old quantity is returned to
+// its original listing, then the new quantity is taken from the (possibly
+// different) target listing, failing the whole edit if there isn't enough.
+admin.patch("/reservations/:id", async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid reservation id" });
+    const parsed = reservationEditSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0].message });
+    }
+    if (Object.keys(parsed.data).length === 0) {
+      return res.status(400).json({ error: "No fields to update" });
+    }
+
+    try {
+      const updated = await db.transaction(async (tx) => {
+        const [existing] = await tx.select().from(reservations).where(eq(reservations.id, id));
+        if (!existing) throw new Error("__NOT_FOUND__");
+
+        const newListingId = parsed.data.listingId ?? existing.listingId;
+        const newQuantity = parsed.data.quantity ?? existing.quantity;
+        const newName = parsed.data.name ?? existing.name;
+        const newEmail = parsed.data.email ?? existing.email;
+
+        if (newListingId !== existing.listingId) {
+          const [targetListing] = await tx.select().from(listings).where(eq(listings.id, newListingId));
+          if (!targetListing) throw new Error("__INVALID_LISTING__");
+        }
+
+        const changedInventoryRelevantFields =
+          newListingId !== existing.listingId || newQuantity !== existing.quantity;
+
+        if (existing.status === "CONFIRMED" && changedInventoryRelevantFields) {
+          // Return the tickets currently held against the old listing...
+          await tx
+            .update(listings)
+            .set({ ticketsAvailable: sql`${listings.ticketsAvailable} + ${existing.quantity}` })
+            .where(eq(listings.id, existing.listingId));
+
+          // ...then try to take the new amount from the (possibly different) target listing.
+          const decremented = await tx
+            .update(listings)
+            .set({ ticketsAvailable: sql`${listings.ticketsAvailable} - ${newQuantity}` })
+            .where(and(eq(listings.id, newListingId), gte(listings.ticketsAvailable, newQuantity)));
+
+          if (decremented.rowsAffected === 0) {
+            throw new InsufficientInventoryError();
+          }
+        }
+
+        const [saved] = await tx
+          .update(reservations)
+          .set({ listingId: newListingId, quantity: newQuantity, name: newName, email: newEmail })
+          .where(eq(reservations.id, id))
+          .returning();
+        return saved;
+      });
+
+      const [listing] = await db.select().from(listings).where(eq(listings.id, updated.listingId));
+      res.json({ ...updated, listing });
+    } catch (err) {
+      if (err instanceof InsufficientInventoryError) {
+        return res
+          .status(409)
+          .json({ error: "Not enough tickets remain for that game/quantity to save this change." });
+      }
+      if (err instanceof Error && err.message === "__NOT_FOUND__") {
+        return res.status(404).json({ error: "Reservation not found" });
+      }
+      if (err instanceof Error && err.message === "__INVALID_LISTING__") {
+        return res.status(400).json({ error: "Selected game does not exist" });
+      }
+      throw err;
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Delete a reservation outright. If it was CONFIRMED, its tickets are
+// returned to the listing's available count before the row is removed.
+admin.delete("/reservations/:id", async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid reservation id" });
+
+    const result = await db.transaction(async (tx) => {
+      const [existing] = await tx.select().from(reservations).where(eq(reservations.id, id));
+      if (!existing) return { status: 404 as const, error: "Reservation not found" };
+
+      if (existing.status === "CONFIRMED") {
+        await tx
+          .update(listings)
+          .set({ ticketsAvailable: sql`${listings.ticketsAvailable} + ${existing.quantity}` })
+          .where(eq(listings.id, existing.listingId));
+      }
+
+      await tx.delete(reservations).where(eq(reservations.id, id));
+      return {
+        status: 200 as const,
+        restoredTickets: existing.status === "CONFIRMED" ? existing.quantity : 0,
+      };
+    });
+
+    if ("error" in result) return res.status(result.status).json({ error: result.error });
+    res.json({ ok: true, restored: result.restoredTickets });
+  } catch (err) {
+    next(err);
+  }
+});
+
 function csvCell(value: unknown): string {
   if (value === null || value === undefined) return "";
   const s = String(value);

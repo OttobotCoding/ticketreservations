@@ -234,3 +234,72 @@ button.secondary { background: transparent; color: var(--muted); border: 1px sol
 .row-price { min-width: 70px; }
 
 .reason { margin: 0.35rem 0 0; font-size: 0.8rem; max-width: 220px; }
+
+.reservation-edit-form {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  max-width: 420px;
+}
+.reservation-edit-form label {
+  display: block;
+  margin: 0.6rem 0;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.reservation-edit-form input,
+.reservation-edit-form select {
+  display: block;
+  width: 100%;
+  margin-top: 0.3rem;
+  padding: 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+/* ---- Large sold-out banner across the whole listing row ---- */
+/* .row already has position: relative, so this overlay covers the full block. */
+.sold-out-banner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 5;
+}
+.sold-out-banner span {
+  transform: rotate(-6deg);
+  background: rgba(127, 29, 29, 0.92);
+  color: #fecaca;
+  font-size: 1.9rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 0.5rem 3rem;
+  border-radius: 8px;
+  border: 3px solid #fecaca;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+/* Dim just the ticket info/button (not the banner itself, which is a sibling)
+   so the red "Sold Out" stamp stays fully vivid instead of fading with them. */
+.row.listing-sold-out .row-logo,
+.row.listing-sold-out .row-main,
+.row.listing-sold-out .row-count,
+.row.listing-sold-out .row-price,
+.row.listing-sold-out button {
+  opacity: 0.35;
+}
+
+@media (max-width: 560px) {
+  .sold-out-banner span {
+    font-size: 1.1rem;
+    padding: 0.35rem 1.5rem;
+    letter-spacing: 0.12em;
+  }
+}

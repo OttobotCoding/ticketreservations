@@ -29,9 +29,14 @@ export default function ListingsPage() {
           const notOnSale = l.ticketsAvailable === 0 && l.pricePerTicket === 0;
           const soldOut = l.ticketsAvailable === 0 && !notOnSale;
           return (
-            <div key={l.id} className={`row${soldOut || notOnSale ? " sold-out" : ""}`}>
+            <div key={l.id} className={`row${notOnSale ? " sold-out" : ""}${soldOut ? " listing-sold-out" : ""}`}>
               {l.opponentLogo && (
                 <img className="row-watermark" src={l.opponentLogo} alt="" aria-hidden="true" />
+              )}
+              {soldOut && (
+                <div className="sold-out-banner" aria-hidden="true">
+                  <span>Sold Out</span>
+                </div>
               )}
               {l.opponentLogo && <img className="row-logo" src={l.opponentLogo} alt="" />}
               <div className="row-main">
