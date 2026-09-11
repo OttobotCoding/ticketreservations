@@ -97,26 +97,4 @@ export async function initDb(): Promise<void> {
   } catch {
     /* column already exists */
   }
-
-  try {
-    await client.execute("ALTER TABLE listings ADD COLUMN note TEXT");
-  } catch {
-    /* column already exists */
-  }
-
-  // Tracking-page columns (added after initial release) — same
-  // try/ignore-if-exists pattern as the migrations above.
-  for (const stmt of [
-    "ALTER TABLE reservations ADD COLUMN ticket_email_sent_at INTEGER",
-    "ALTER TABLE reservations ADD COLUMN payment_method TEXT",
-    "ALTER TABLE reservations ADD COLUMN payment_amount REAL",
-    "ALTER TABLE reservations ADD COLUMN paid_at INTEGER",
-    "ALTER TABLE reservations ADD COLUMN admin_notes TEXT",
-  ]) {
-    try {
-      await client.execute(stmt);
-    } catch {
-      /* column already exists */
-    }
-  }
 }

@@ -272,6 +272,7 @@ function ListingRow({
   const [price, setPrice] = useState(String(listing.pricePerTicket));
   const [available, setAvailable] = useState(String(listing.ticketsAvailable));
   const [saving, setSaving] = useState(false);
+  const [note, setNote] = useState(listing.note ?? "");
 
   const remove = async () => {
     if (!window.confirm(`Delete "${listing.opponent}"? This cannot be undone.`)) return;
@@ -291,7 +292,8 @@ function ListingRow({
     row !== listing.row ||
     seats !== listing.seats ||
     Number(price) !== listing.pricePerTicket ||
-    Number(available) !== listing.ticketsAvailable;
+    Number(available) !== listing.ticketsAvailable ||
+    note !== (listing.note ?? " ");
 
   const save = async () => {
     setSaving(true);
@@ -302,6 +304,7 @@ function ListingRow({
         seats,
         pricePerTicket: Number(price),
         ticketsAvailable: Number(available),
+        note: note.trim() || null,
       });
       onSaved();
     } catch (e) {
@@ -323,6 +326,12 @@ function ListingRow({
             timeStyle: "short",
           })}
         </span>
+        <input
+          className="note-input"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Note shown on the listing (optional)"
+        />
       </td>
       <td><input value={section} onChange={(e) => setSection(e.target.value)} /></td>
       <td><input value={row} onChange={(e) => setRow(e.target.value)} /></td>

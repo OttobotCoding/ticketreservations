@@ -234,36 +234,3 @@ button.secondary { background: transparent; color: var(--muted); border: 1px sol
 .row-price { min-width: 70px; }
 
 .reason { margin: 0.35rem 0 0; font-size: 0.8rem; max-width: 220px; }
-
-.tracking-filters { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
-.tracking-search { flex: 1; min-width: 200px; padding: 0.55rem; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--text); }
-.tracking-filters select { padding: 0.55rem; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--text); }
-
-.tracking-table { font-size: 0.9rem; }
-.tracking-payment-cell, .tracking-notes-cell { display: flex; flex-direction: column; gap: 0.35rem; min-width: 160px; }
-.tracking-payment-cell select,
-.tracking-payment-cell input,
-.tracking-notes-cell textarea {
-  padding: 0.4rem;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
-  font-size: 0.85rem;
-}
-.tracking-notes-cell textarea { resize: vertical; min-width: 160px; }
-
-.tagline {
-  background: #0a2343;
-  border: 1px solid #163a66;
-  border-top: 3px solid #fb4f14;
-  border-radius: 12px;
-  padding: 0.75rem 1.25rem;
-  margin: 0 0 1.5rem;
-  margin-top: -0.5rem;
-  color: var(--text);
-  font-size: 0.85rem;
-  font-weight: 700;
-  border-radius: 0 0 12px 12px;
-  text-align: center;
-}

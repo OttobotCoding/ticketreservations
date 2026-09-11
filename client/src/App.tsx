@@ -34,11 +34,7 @@ export default function App() {
           )}
         </nav>
       </header>
-      <p className="tagline">
-        "Reserve" game tickets from the Smigiel Family tickets.  <span style={{ color:"red" }}>All prices are face value.</span><br></br>
-        Tickets are not confirmed until you receive the "Approved" email.  Then Terrie or I will reach out for payment.
-      </p>
-      {page}
+      {isAdmin ? <AdminPage /> : <ListingsPage />}
     </div>
   );
 }
